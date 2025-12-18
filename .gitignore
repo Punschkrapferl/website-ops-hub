@@ -1,6 +1,22 @@
+# Env (never commit)
 .env
+.env.*
+!.env.example
+
+# Node
 node_modules/
+**/node_modules/
 dist/
-site/build/
+**/dist/
+*.log
+
+# Ruby / Middleman
 .bundle/
+vendor/bundle/
+site/.bundle/
+site/build/
+
+# OS / IDE junk
 .DS_Store
+.idea/
+.vscode/
