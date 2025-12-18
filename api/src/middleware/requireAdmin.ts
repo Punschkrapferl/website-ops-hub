@@ -4,7 +4,8 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     if (!ADMIN_TOKEN) {
-        return res.status(404).json({ ok: false });
+        req.log?.error("ADMIN_TOKEN is not configured");
+        return res.status(500).json({ ok: false });
     }
 
     if (req.header("X-Admin-Token") !== ADMIN_TOKEN) {
