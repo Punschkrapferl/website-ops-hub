@@ -100,13 +100,19 @@ export function leadRouter(db: Db) {
                 mockNotify(db, lead);
             } catch {}
 
+            (req as any).log?.info({ leadId, email }, "lead created");
             res.status(201).json({ ok: true, leadId });
         } catch (err: any) {
             if (String(err?.message).includes("UNIQUE")) {
                 const existing = getLeadByIdempotencyKey(db, idempotencyKey);
+                (req as any).log?.info(
+                    { leadId: existing?.id, email },
+                    "duplicate lead submission"
+                );
                 return res.json({ ok: true, duplicate: true, leadId: existing?.id });
             }
 
+            (req as any).log?.error({ err }, "lead ingestion failed");
             res.status(500).json({ ok: false });
         }
     });
