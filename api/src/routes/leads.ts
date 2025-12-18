@@ -2,9 +2,11 @@ import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import type { Db } from "../db.js";
+
 import {
     insertEvent,
     getLeadByIdempotencyKey,
+    EVENT_TYPES,
 } from "../db.js";
 import { mockCrmUpsert, mockNotify } from "../integrations.js";
 
@@ -59,14 +61,14 @@ export function leadRouter(db: Db) {
         );
 
         const leadId = Number(info.lastInsertRowid);
-        insertEvent(db, leadId, "lead_received", "ok");
+        insertEvent(db, leadId, EVENT_TYPES.LEAD_RECEIVED, "ok");
         return leadId;
     });
 
     router.post("/api/lead", (req, res) => {
         const parsed = LeadSchema.safeParse(req.body);
         if (!parsed.success) {
-            insertEvent(db, null, "lead_received", "error");
+            insertEvent(db, null, EVENT_TYPES.LEAD_RECEIVED, "error");
             return res.status(400).json({ ok: false });
         }
 
