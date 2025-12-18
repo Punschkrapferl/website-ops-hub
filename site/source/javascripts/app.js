@@ -163,14 +163,14 @@ async function resetDemo() {
 document.addEventListener("DOMContentLoaded", () => {
     loadStatusAndEvents();
 
-    const refreshBtn = document.getElementById("refreshEvents");
-    if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => loadStatusAndEvents());
-    }
-
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
         clearBtn.addEventListener("click", async () => {
+            if (!ADMIN_TOKEN) {
+                window.alert("Admin actions disabled in demo mode.");
+                return;
+            }
+
             const ok = window.confirm(
                 "Reset demo?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
             );
@@ -189,4 +189,5 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
 });
