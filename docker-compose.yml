@@ -4,7 +4,8 @@ services:
     env_file:
       - .env
     environment:
-      NODE_ENV: production
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      NODE_ENV: development
       DB_PATH: /data/app.db
       CORS_ORIGIN: http://localhost:4567
     volumes:

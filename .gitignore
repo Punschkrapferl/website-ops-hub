@@ -20,3 +20,7 @@ site/build/
 .DS_Store
 .idea/
 .vscode/
+
+# local sqlite db
+api/app.db
+*.db

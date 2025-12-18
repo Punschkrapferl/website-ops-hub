@@ -6,8 +6,8 @@ type Stmts = {
   insertEvent: Database.Statement;
   selectLeadByKey: Database.Statement;
   selectEvents: Database.Statement;
-  deleteAllEvents: Database.Statement;
-  deleteAllLeads: Database.Statement;
+  clearAllEvents: Database.Statement;
+  clearAllLeads: Database.Statement;
 };
 
 const stmtCache = new WeakMap<Db, Stmts>();
@@ -18,16 +18,18 @@ function getStmts(db: Db): Stmts {
 
   const stmts: Stmts = {
     insertEvent: db.prepare(
-      "INSERT INTO events (lead_id, type, status, detail, created_at) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO events (lead_id, type, status, detail, created_at) VALUES (?, ?, ?, ?, ?)"
     ),
     selectLeadByKey: db.prepare(
-      "SELECT id, email FROM leads WHERE idempotency_key = ? LIMIT 1"
+        "SELECT id, email FROM leads WHERE idempotency_key = ? LIMIT 1"
     ),
     selectEvents: db.prepare(
-      "SELECT id, lead_id, type, status, detail, created_at FROM events ORDER BY id DESC LIMIT ?"
+        "SELECT id, lead_id, type, status, detail, created_at FROM events ORDER BY id DESC LIMIT ?"
     ),
-    deleteAllEvents: db.prepare("DELETE FROM events"),
-    deleteAllLeads: db.prepare("DELETE FROM leads"),
+
+    // Admin/demo-only: clears full tables (data only, not schema)
+    clearAllEvents: db.prepare("DELETE FROM events"),
+    clearAllLeads: db.prepare("DELETE FROM leads"),
   };
 
   stmtCache.set(db, stmts);
@@ -44,23 +46,23 @@ export function openDb(dbPath: string): Db {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS leads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      idempotency_key TEXT NOT NULL UNIQUE,
-      name TEXT,
-      email TEXT NOT NULL,
-      company TEXT,
-      message TEXT,
-      created_at TEXT NOT NULL
+                                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                       idempotency_key TEXT NOT NULL UNIQUE,
+                                       name TEXT,
+                                       email TEXT NOT NULL,
+                                       company TEXT,
+                                       message TEXT,
+                                       created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id INTEGER,
-      type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      detail TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE SET NULL
+                                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                        lead_id INTEGER,
+                                        type TEXT NOT NULL,
+                                        status TEXT NOT NULL,
+                                        detail TEXT,
+                                        created_at TEXT NOT NULL,
+                                        FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE SET NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
@@ -72,12 +74,12 @@ export function openDb(dbPath: string): Db {
 }
 
 export function insertEvent(
-  db: Db,
-  leadId: number | null,
-  type: string,
-  status: string,
-  detail?: string,
-  createdAt?: string
+    db: Db,
+    leadId: number | null,
+    type: string,
+    status: string,
+    detail?: string,
+    createdAt?: string
 ) {
   const { insertEvent } = getStmts(db);
   const ts = createdAt ?? new Date().toISOString();
@@ -85,8 +87,8 @@ export function insertEvent(
 }
 
 export function getLeadByIdempotencyKey(
-  db: Db,
-  key: string
+    db: Db,
+    key: string
 ): { id: number; email: string } | null {
   const { selectLeadByKey } = getStmts(db);
   const row = selectLeadByKey.get(key) as { id: number; email: string } | undefined;
@@ -105,32 +107,54 @@ export function listEvents(db: Db, limit: number) {
   }>;
 }
 
+/**
+ * Clears the events feed.
+ * Admin/demo use only. Refuses to run in production.
+ */
 export function clearEvents(db: Db, vacuum = false): number {
-  const { deleteAllEvents } = getStmts(db);
-  const info = deleteAllEvents.run();
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to clear events in production");
+  }
 
-  // VACUUM can't run inside a transaction reliably, so keep it outside.
+  const { clearAllEvents } = getStmts(db);
+  const info = clearAllEvents.run();
+
   if (vacuum) db.exec("VACUUM");
   return info.changes;
 }
 
-export function resetDemo(db: Db, vacuum = false): { deletedEvents: number; deletedLeads: number } {
-  const { deleteAllEvents, deleteAllLeads } = getStmts(db);
+/**
+ * Resets all demo data (leads + events).
+ * Data-only operation; schema remains intact.
+ * Admin/demo use only.
+ */
+export function resetDemo(
+    db: Db,
+    vacuum = false
+): { deletedEvents: number; deletedLeads: number } {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to reset demo data in production");
+  }
+
+  const { clearAllEvents, clearAllLeads } = getStmts(db);
 
   const tx = db.transaction(() => {
-    const ev = deleteAllEvents.run().changes;
-    const ld = deleteAllLeads.run().changes;
+    const ev = clearAllEvents.run().changes;
+    const ld = clearAllLeads.run().changes;
 
-    // Reset AUTOINCREMENT counters (for demo)
+    // Reset AUTOINCREMENT counters (demo convenience)
     try {
       const hasSeq = db
-        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence' LIMIT 1")
-        .get();
+          .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence' LIMIT 1"
+          )
+          .get();
+
       if (hasSeq) {
         db.exec("DELETE FROM sqlite_sequence WHERE name IN ('leads','events');");
       }
     } catch {
-      // If sqlite_sequence isn't there yet, not a problem.
+      // sqlite_sequence may not exist yet — safe to ignore
     }
 
     return { deletedEvents: ev, deletedLeads: ld };
