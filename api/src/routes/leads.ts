@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import type { Db } from "../db.js";
@@ -24,7 +25,12 @@ function getIdempotencyKey(req: any, email: string): string {
     if (hdr && hdr.length <= 200) return hdr;
 
     const msg = (req.body?.message ?? "").toString();
-    return `${email}::${msg}`.slice(0, 200);
+
+    return crypto
+        .createHash("sha256")
+        .update(`${email}::${msg}`)
+        .digest("hex")
+        .slice(0, 64);
 }
 
 export function leadRouter(db: Db) {
