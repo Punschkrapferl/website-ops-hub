@@ -16,7 +16,13 @@ export function createApp() {
     app.use(express.json({ limit: "1mb" }));
     app.use(pinoHttp({ logger }));
 
-    const db = openDb(process.env.DB_PATH ?? "./app.db");
+    let db;
+    try {
+        db = openDb(process.env.DB_PATH ?? "./app.db");
+    } catch (err) {
+        logger.fatal(err, "Failed to open database");
+        process.exit(1);
+    }
 
     app.use(healthRouter);
     app.use(eventsRouter(db));
