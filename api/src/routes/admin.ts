@@ -7,7 +7,7 @@ import { requireAdmin } from "../middleware/requireAdmin.js";
 export function adminRouter(db: Db) {
     const router = Router();
 
-    router.delete("/api/admin/events", requireAdmin, (req, res) => {
+    router.delete("/api/events", requireAdmin, (req, res) => {
         const vacuum = (req.query.vacuum as string) === "1";
         const deleted = clearEvents(db, vacuum);
         res.json({ ok: true, deleted });
