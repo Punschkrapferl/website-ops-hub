@@ -7,6 +7,9 @@ export const EVENT_TYPES = {
   ADMIN_ACTION: "admin_action",
 } as const;
 
+export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
+export type EventStatus = "ok" | "error";
+
 export type Db = Database.Database;
 
 type Stmts = {
@@ -83,8 +86,8 @@ export function openDb(dbPath: string): Db {
 export function insertEvent(
     db: Db,
     leadId: number | null,
-    type: string,
-    status: string,
+    type: EventType,
+    status: EventStatus,
     detail?: string,
     createdAt?: string
 ) {
@@ -127,6 +130,16 @@ export function clearEvents(db: Db, vacuum = false): number {
   const info = clearAllEvents.run();
 
   if (vacuum) db.exec("VACUUM");
+
+  // Record the admin action *after* clearing so the operation itself is observable
+  insertEvent(
+      db,
+      null,
+      EVENT_TYPES.ADMIN_ACTION,
+      "ok",
+      `events_cleared deleted=${info.changes} vacuum=${vacuum ? 1 : 0}`
+  );
+
   return info.changes;
 }
 
@@ -169,5 +182,15 @@ export function resetDemo(
 
   const result = tx();
   if (vacuum) db.exec("VACUUM");
+
+  // Audit trail after the reset completes
+  insertEvent(
+      db,
+      null,
+      EVENT_TYPES.ADMIN_ACTION,
+      "ok",
+      `demo_reset deletedEvents=${result.deletedEvents} deletedLeads=${result.deletedLeads} vacuum=${vacuum ? 1 : 0}`
+  );
+
   return result;
 }
