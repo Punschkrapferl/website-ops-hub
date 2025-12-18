@@ -1,5 +1,12 @@
 import Database from "better-sqlite3";
 
+export const EVENT_TYPES = {
+  LEAD_RECEIVED: "lead_received",
+  CRM_UPSERT: "crm_upsert",
+  NOTIFY: "notify",
+  ADMIN_ACTION: "admin_action",
+} as const;
+
 export type Db = Database.Database;
 
 type Stmts = {
