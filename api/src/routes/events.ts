@@ -6,10 +6,11 @@ export function eventsRouter(db: Db) {
     const router = Router();
 
     router.get("/api/events", (req, res) => {
-        const limit = Math.min(
-            parseInt((req.query.limit as string) ?? "50", 10) || 50,
-            200
-        );
+
+        // Intentionally limit-only for ops visibility.
+        // Cursor-based pagination can be added if event volume grows.
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
 
         res.json({ events: listEvents(db, limit) });
     });
