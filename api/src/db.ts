@@ -20,6 +20,7 @@ type Stmts = {
   clearAllLeads: Database.Statement;
 };
 
+// Statement cache per DB instance to avoid re-preparing
 const stmtCache = new WeakMap<Db, Stmts>();
 
 function getStmts(db: Db): Stmts {
@@ -49,6 +50,7 @@ function getStmts(db: Db): Stmts {
 export function openDb(dbPath: string): Db {
   const db = new Database(dbPath);
 
+  // SQLite runtime tuning for concurrency and durability
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
