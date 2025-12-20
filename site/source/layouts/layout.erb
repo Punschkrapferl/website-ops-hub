@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+   <!-- Inject admin token for demo-only UI actions (e.g. reset events) -->
     <meta name="admin-token" content="<%= ENV['ADMIN_TOKEN'] || '' %>" />
 
     <title><%= current_page.data.title || "Website Ops Hub" %></title>
