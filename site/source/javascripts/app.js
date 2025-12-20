@@ -1,10 +1,21 @@
-// In nginx mode (http://localhost:3000) we can use same-origin URLs.
-// In middleman dev mode (http://localhost:4567) there's no nginx proxy,
-// so we go straight to the API on :8080 (requires CORS enabled on the API).
+/* eslint-env browser, es2021 */
+/* global window,
+  document,
+  fetch,
+  console,
+  Error,
+  JSON,
+  Math,
+  String,
+  Boolean
+*/
+
+// Demo: nginx proxies /api (same-origin).
+// Dev: Middleman runs on :4567, so we call the API directly on :8080 (CORS required).
+
 const API_BASE = (() => {
     const port = window.location.port;
-    if (port === "4567") return "http://localhost:8080";
-    return "";
+    return port === "4567" ? "http://localhost:8080" : "";
 })();
 
 const EVENTS_LIST_URL = `${API_BASE}/api/events?limit=8`;
@@ -12,14 +23,22 @@ const RESET_URL = `${API_BASE}/api/admin/reset`;
 const HEALTH_URL = `${API_BASE}/health`;
 
 const ADMIN_TOKEN =
-    document.querySelector('meta[name="admin-token"]')?.getAttribute("content") || "";
+    document.querySelector('meta[name="admin-token"]')?.getAttribute("content") ?? "";
 
 async function fetchJson(url) {
     const res = await fetch(url, {
         headers: { Accept: "application/json" },
         cache: "no-store",
     });
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // If server ever returns non-JSON, treat it as failure.
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+        throw new Error(`Expected JSON but got: ${ct || "unknown content-type"}`);
+    }
+
     return res.json();
 }
 
@@ -35,11 +54,12 @@ async function postJson(url, opts = {}) {
         cache: "no-store",
     });
 
+    // No redundant init; parse if possible, otherwise null.
     let data = null;
     try {
         data = await res.json();
     } catch {
-        data = null;
+
     }
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -72,12 +92,11 @@ function maskEmail(email) {
     const domain = email.slice(at + 1);
     if (!domain) return email;
 
-    let maskedLocal = "";
-    if (local.length <= 2) {
-        maskedLocal = local[0] + "*".repeat(Math.max(1, local.length - 1));
-    } else {
-        maskedLocal = local[0] + "*".repeat(local.length - 2) + local[local.length - 1];
-    }
+    // No redundant init + overwrite; compute directly.
+    const maskedLocal =
+        local.length <= 2
+            ? local[0] + "*".repeat(Math.max(1, local.length - 1))
+            : local[0] + "*".repeat(local.length - 2) + local[local.length - 1];
 
     return `${maskedLocal}@${domain}`;
 }
@@ -123,7 +142,7 @@ async function loadStatusAndEvents() {
     // health
     try {
         const health = await fetchJson(HEALTH_URL);
-        setBadge("healthBadge", !!health.ok, "Healthy", "Unhealthy");
+        setBadge("healthBadge", Boolean(health?.ok), "Healthy", "Unhealthy");
     } catch {
         setBadge("healthBadge", false, "Healthy", "Unreachable");
     }
@@ -131,7 +150,7 @@ async function loadStatusAndEvents() {
     // events
     try {
         const data = await fetchJson(EVENTS_LIST_URL);
-        const events = data.events ?? [];
+        const events = data?.events ?? [];
         setText("eventsCount", String(events.length));
         if (events[0]?.created_at) setText("lastEventTime", events[0].created_at);
         renderEvents(document.getElementById("eventsList"), events);
@@ -155,12 +174,15 @@ async function resetDemo() {
     });
 
     if (!data || data.ok !== true) {
-        throw new Error(`Could not reset demo: ${JSON.stringify(data)}`);
+        throw new Error(
+            `Could not reset demo: ${data ? String(data) : "no response body"}`
+        );
     }
-    return data;
+        return data;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+<<<<<<< Updated upstream
     loadStatusAndEvents();
 <<<<<<< HEAD
 
@@ -170,10 +192,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 =======
 >>>>>>> parent of 051251e (merge: sync safety branch with trunk)
+=======
+    (async () => {
+        try {
+            await loadStatusAndEvents();
+        } catch (err) {
+            console.error("Initial loadStatusAndEvents failed:", err);
+            setBadge("healthBadge", false, "Healthy", "Unreachable");
+        }
+    })();
+>>>>>>> Stashed changes
 
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
         clearBtn.addEventListener("click", async () => {
+<<<<<<< Updated upstream
 <<<<<<< HEAD
 =======
             if (!ADMIN_TOKEN) {
@@ -182,6 +215,13 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
 >>>>>>> parent of 051251e (merge: sync safety branch with trunk)
+=======
+            if (!ADMIN_TOKEN) {
+                window.alert("Public Demo: Admin actions disabled in demo mode.");
+                return;
+            }
+
+>>>>>>> Stashed changes
             const ok = window.confirm(
                 "Reset demo?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
             );

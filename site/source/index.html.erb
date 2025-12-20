@@ -151,7 +151,10 @@ title: Website Ops Hub
       <h2 class="h4 fw-semibold mb-2">Try it quickly</h2>
 
       <div class="kbd">
-        docker compose up --build<br/>
+        git clone https://github.com/Punschkrapferl/website-ops-hub.git<br/>
+        cd website-ops-hub<br/>
+        docker compose -f docker-compose.demo.yml pull<br/>
+        docker compose -f docker-compose.demo.yml up<br/>
         open http://localhost:3000<br/>
         submit the form → check /events
       </div>
