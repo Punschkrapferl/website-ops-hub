@@ -182,17 +182,6 @@ async function resetDemo() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-<<<<<<< Updated upstream
-    loadStatusAndEvents();
-<<<<<<< HEAD
-
-    const refreshBtn = document.getElementById("refreshEvents");
-    if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => loadStatusAndEvents());
-    }
-=======
->>>>>>> parent of 051251e (merge: sync safety branch with trunk)
-=======
     (async () => {
         try {
             await loadStatusAndEvents();
@@ -201,27 +190,15 @@ document.addEventListener("DOMContentLoaded", () => {
             setBadge("healthBadge", false, "Healthy", "Unreachable");
         }
     })();
->>>>>>> Stashed changes
 
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
         clearBtn.addEventListener("click", async () => {
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
-            if (!ADMIN_TOKEN) {
-                window.alert("Admin actions disabled in demo mode.");
-                return;
-            }
-
->>>>>>> parent of 051251e (merge: sync safety branch with trunk)
-=======
             if (!ADMIN_TOKEN) {
                 window.alert("Public Demo: Admin actions disabled in demo mode.");
                 return;
             }
 
->>>>>>> Stashed changes
             const ok = window.confirm(
                 "Reset demo?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
             );
@@ -240,5 +217,4 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-
 });
