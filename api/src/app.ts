@@ -12,6 +12,7 @@ import { leadRouter } from "./routes/leads.js";
 export function createApp() {
     const app = express();
 
+    // Order matters: CORS → body → logging → routes
     app.use(corsMiddleware);
     app.use(express.json({ limit: "1mb" }));
     app.use(pinoHttp({ logger }));
