@@ -1,46 +1,29 @@
 # Website Ops Hub
-<<<<<<< HEAD
+A tiny Web & Technical Ops demo: a static site (Middleman) submits leads to an API
+(Express + SQLite), which records an event trail so you can inspect what happened
+and why.
 
-A tiny Web & Technical Ops demo: a static site (Middleman) submits leads to an API (Express + SQLite), which records an event trail so you can inspect what happened and why.
-
-## What this demonstrates
-- Static site + API integration via a form submission
-- Validation + persistence (SQLite volume)
-- Simple “observability”: an event feed showing each step in the flow
-- Docker Compose setup for local spin-up
-
-## Architecture (high level)
-**Site (nginx + built static files)** → `POST /api/lead` → **API (Express)** → **SQLite** → **Events feed** displayed in the UI.
-
-### Event model
-For each lead submission, the API emits events like:
-- `lead_received` (request accepted)
-- `crm_upsert` (mock downstream system step)
-- `notify` (mock ops notification step)
-
-These are intentionally separate events so the UI can show a trace of the pipeline.
-
-## Quickstart (Docker)
-### Prereqs
-- Docker + Docker Compose
-
-### Run
-```bash
-docker compose up --build
-```
-
-Open:
-- Site: `http://localhost:3000`
-- API health: `http://localhost:8080/health`
-
-### Local dev (optional)
-If you use the Middleman dev server (hot reload):
-
-=======
-A Web & Technical Operations demo project showing how a **static website**
-can be reliably connected to backend services, automation logic, and
-observable data flows.
+![Website Ops Hub – overview](docs/screenshots/LiveStatus.png)
 ---
+## What this demonstrates
+- Static site + API integration via form submission
+- Validation + persistence using SQLite (Docker volume)
+- Simple observability via an event feed
+- Clear separation between demo mode and dev mode
+- Docker Compose–based local setup
+---
+
+## Intended audience
+
+This project is designed for:
+- technical operations / platform engineers
+- full-stack developers
+- interview demos and technical take-home reviews
+
+It focuses on **clarity, observability, and correctness**, not feature completeness.
+
+---
+
 ## Quick Start (Prebuilt Demo – Recommended)
 
 This project runs entirely via Docker Compose using **prebuilt images**.
@@ -51,112 +34,231 @@ No local builds required.
 git clone https://github.com/Punschkrapferl/website-ops-hub.git
 cd website-ops-hub
 docker-compose -f docker-compose.demo.yml pull
-docker-compose -f docker-compose.demo.yml up -d
+docker-compose -f docker-compose.demo.yml up
 ```
-### Stop
-```bash
-docker compose -f docker-compose.demo.yml down
+## Architecture (high level)
+```
+┌──────────────────────────────┐
+│        Static Website        │
+│   Middleman (build output)   │
+│          served by           │
+│            nginx             │
+│   http://localhost:3000      │
+│   (or :4567 in dev mode)     │
+└──────────────┬───────────────┘
+               │
+               │ POST /api/lead
+               │ (form submission)
+               ▼
+┌──────────────────────────────┐
+│        Express API           │
+│     http://localhost:8080    │
+│                              │
+│ - Input validation (Zod)     │
+│ - Idempotency handling       │
+│ - Transactional writes       │
+│ - Event emission             │
+└──────────────┬───────────────┘
+               │
+               │ inserts / reads
+               ▼
+┌──────────────────────────────┐
+│           SQLite             │
+│      (Docker volume)         │
+│                              │
+│ - leads table                │
+│ - events table               │
+│ - WAL mode enabled           │
+└──────────────┬───────────────┘
+               │
+               │ queried by API
+               ▼
+┌──────────────────────────────┐
+│        Events Feed UI        │
+│                              │
+│ Shows step-by-step trace:    │
+│ - lead_received              │
+│ - crm_upsert (mock)          │
+│ - notify (mock)              │
+└──────────────────────────────┘
 
 ```
 ---
-## Overview
-Website Ops Hub demonstrates a realistic Web & Technical Operations setup:
-- A static website collects leads via a form
-- Data is sent to a backend API
-- Validated data is persisted
-- Each processing step emits observable events
-  The goal is to make data flows **transparent, inspectable, and reliable**.
----
-## Architecture
-High-level data flow:
-```
-Static Site (Middleman)
-          |
-          v
-    POST /api/lead
-          |
-          v
-  Backend API (Express)
-          |
-          v
-        SQLite
-          |
-          v
- Events Feed (/events)
-```
-- The static site is served via **nginx**
-- API requests are proxied to the backend
-- State-changing actions emit structured events
----
-## Tech Stack
-- **Static site:** Middleman, HTML, CSS, JavaScript, Bootstrap
-- **Backend API:** Node.js (Express)
-- **Persistence:** SQLite (Docker volume)
-- **Reverse proxy:** nginx
-- **Containerization:** Docker, Docker Compose
-- **Version control:** GitHub (pull requests, protected branches)
----
-## Features
-- Validated lead ingestion
-- Idempotency handling for duplicate submissions
-- Structured event trail per request
-- Health endpoint for monitoring
-- Admin-protected reset endpoint (demo use)
-- Environment-based configuration
----
-## Relevance to Web & Technical Operations
-This project directly mirrors common Web & Technical Operations tasks:
-- Maintaining a code-driven static website
-- Connecting website forms to backend systems
-- Designing reliable data flows with validation and persistence
-- Troubleshooting system behavior using observable events
-- Working with GitHub pull requests and branch protection
----
-## Local Development (build from source)
-Start the full stack locally using Docker Compose:
->>>>>>> parent of 051251e (merge: sync safety branch with trunk)
-```bash
-docker-compose -f docker-compose.yml up --build
-```
-<<<<<<< HEAD
-Open:
-- Site dev: `http://localhost:4567`
-Note: in dev mode the API sets CORS to allow the dev origin.
+## Lead submission (Contact form)
 
-### Configuration
-Environment variables:
-Copy `.env.example` to `.env` and adjust if needed:
+The contact form is the entry point into the pipeline.  
+Submitting the form triggers validation, persistence, and downstream events.
+
+![Contact form – lead submission](docs/screenshots/Contact.png)
+
+---
+## Event model
+For each lead submission, the API emits a sequence of events:
+- `lead_received` – request accepted and validated
+- `crm_upsert` – mock downstream CRM integration
+- `notify` – mock operations notification
+  events are intentionally separate so partial failures are visible in the UI.
+
+![Event feed showing a full lead pipeline](docs/screenshots/Event.png)
+
+---
+## What is intentionally simplified
+
+- Integrations (`crm_upsert`, `notify`) are mocked
+- Authentication is a shared admin token (demo-only)
+- No background workers or message queues
+- SQLite instead of a managed database
+
+These choices keep the data flow inspectable and the demo self-contained.
+
+---
+
+## Run modes
+### Demo mode (default)
+- Static site served by **nginx**
+- API requests proxied through nginx
+- Same-origin requests (no CORS required)
+  Ports:
+- Site: `http://localhost:3000`
+- API (internal): `http://api:8080`
+- API health (direct): `http://localhost:8080/health`
+  Run:
+```bash
+docker-compose -f docker-compose.demo.yml up --build
+```
+---
+### Dev mode (Middleman hot reload)
+- Middleman dev server with hot reload
+- Browser calls API directly
+- API must allow CORS
+  Ports:
+- Site (dev): `http://localhost:4567`
+- API: `http://localhost:8080`
+  Run:
+```bash
+docker compose --profile dev up --build
+```
+---
+## Configuration
+Copy the example environment file:
 ```bash
 cp .env.example .env
 ```
-#### Important
-- `ADMIN_TOKEN` is used by the site to send admin actions (e.g. clearing events). Do not commit real tokens.
+### Environment variables
+```env
+ADMIN_TOKEN=changeme
+CORS_ORIGIN=http://localhost:4567
+DB_PATH=/data/app.db
+```
+- `ADMIN_TOKEN`
+  Shared secret for admin-only endpoints.
+  Required for destructive operations.
+- `CORS_ORIGIN`
+  Comma-separated list of allowed origins.
+  Required only in dev mode.
+- `DB_PATH`
+  Path to the SQLite database file inside the container.
+---
+## API endpoints
+### Health
+```http
+GET /health
+```
 
-### API endpoints (summary)
-- `GET /health` → healthcheck
-- Site → nginx → API: `POST /api/lead` (proxied to API `POST /lead`)
-- `GET /events` → list recent events
-- `DELETE /events` → clear events (requires admin token)
+Returns `200 OK` if the API is running.
 
-If your site proxies under `/api/`, routes are accessible as `/api/...` on the site domain.
+---
+### Lead ingestion
+```http
+POST /api/lead
+```
+- Validates input
+- Stores lead in SQLite
+- Emits events
+- Triggers mock integrations
+- Supports idempotency via `Idempotency-Key` header
+---
+### Events feed
+```http
+GET /api/events
+```
+Returns recent events for inspection.
+```http
+DELETE /api/events
+```
+Clears the event log.
+Requires:
+```http
+X-Admin-Token: <ADMIN_TOKEN>
+```
+---
+### Admin reset
+```http
+POST /api/admin/reset
+```
+Resets all demo data.
+Optional query:
+```http
+?vacuum=1
+```
+
+Requires admin token.
+
+---
+## Admin authentication
+Admin endpoints require a shared secret:
+```http
+X-Admin-Token: <ADMIN_TOKEN>
+```
+
+If `ADMIN_TOKEN` is not configured, the API fails fast on startup.
+
+---
+
+## Security notes (demo scope)
+
+- Admin actions are protected by a shared token embedded at build time
+- Tokens are for local demo use only
+- No secrets should be committed to the repository
+- No user authentication is implemented
+
+This setup is intentionally minimal and not intended for public deployment.
+
+---
+
+## Persistence
+- SQLite database stored on a Docker volume
+- WAL mode enabled for better concurrency
+- Data survives container restarts
+---
+## Observability
+Every significant step emits an event.
+The UI displays the event feed as a trace so you can see:
+- what succeeded
+- what failed
+- where the pipeline stopped
+---
+## Project structure (top level only)
+```
+website-ops-hub/
+├── api/ # Express API + SQLite
+├── site/ # Middleman static site
+├── docker-compose.yml
+├── docker-compose.demo.yml
+├── .env.example
+└── README.md
+```
 
 ## Troubleshooting
-- If `localhost:3000` doesn't load: run `docker compose ps` and check the `site` container status/logs.
-- If the API returns "Cannot GET /": that's normal unless you implemented a root route. Use `/health`.
-- If `depends_on: condition: service_healthy` blocks: ensure the API has a working healthcheck and `/health` returns 200.
+- **CORS errors in dev mode**
+  Ensure `CORS_ORIGIN` includes `http://localhost:4567`
+- **404 on `/api/*`**
+  Check nginx proxy configuration and trailing slashes
+- **API not starting**
+  Ensure `ADMIN_TOKEN` is set
 
-=======
-After startup:
-- Website: http://localhost:3000
-- API health: http://localhost:8080/health
-- Events view: http://localhost:3000/events.html
+Note: Images are published with a placeholder admin token.
+  A real ADMIN_TOKEN must be provided at runtime via .env.
 ---
-## Future Improvements
-- Integrate a real CRM or webhook-based downstream system
-- Add retry logic and dead-letter handling
-- Expose basic metrics (lead count, error rate)
-- Extend documentation for non-technical stakeholders
----
->>>>>>> parent of 051251e (merge: sync safety branch with trunk)
 ## License
 MIT
