@@ -1,3 +1,5 @@
+// Lead ingestion endpoint with idempotency + transactional event logging.
+
 import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -10,6 +12,7 @@ import {
 } from "../db.js";
 import { mockCrmUpsert, mockNotify } from "../integrations.js";
 
+// Request validation and normalization
 const LeadSchema = z.object({
     name: z.string().trim().min(1).max(120).optional().or(z.literal("")),
     email: z.string().trim().email().max(200),
@@ -17,11 +20,13 @@ const LeadSchema = z.object({
     message: z.string().trim().max(5000).optional().or(z.literal("")),
 });
 
+// Normalize optional strings to null for DB storage
 function normalizeOpt(s?: string): string | null {
     const v = (s ?? "").trim();
     return v.length ? v : null;
 }
 
+// Idempotency via header or deterministic hash fallback
 function getIdempotencyKey(req: any, email: string): string {
     const hdr = req.header("Idempotency-Key");
     if (hdr && hdr.length <= 200) return hdr;
@@ -38,11 +43,13 @@ function getIdempotencyKey(req: any, email: string): string {
 export function leadRouter(db: Db) {
     const router = Router();
 
+    // Prepared statement reused inside transaction
     const insertLeadStmt = db.prepare(`
     INSERT INTO leads (idempotency_key, name, email, company, message, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
+    // Atomic lead creation + event logging
     const createLeadTx = db.transaction((params: {
         idempotencyKey: string;
         name: string | null;
@@ -95,6 +102,7 @@ export function leadRouter(db: Db) {
                 message: normalizeOpt(data.message),
             };
 
+            // Fire-and-forget integrations (non-critical path)
             try {
                 mockCrmUpsert(db, lead);
                 mockNotify(db, lead);
@@ -103,6 +111,7 @@ export function leadRouter(db: Db) {
             (req as any).log?.info({ leadId, email }, "lead created");
             res.status(201).json({ ok: true, leadId });
         } catch (err: any) {
+            // Idempotent retry handling
             if (String(err?.message).includes("UNIQUE")) {
                 const existing = getLeadByIdempotencyKey(db, idempotencyKey);
                 (req as any).log?.info(
