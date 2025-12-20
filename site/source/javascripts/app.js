@@ -162,15 +162,26 @@ async function resetDemo() {
 
 document.addEventListener("DOMContentLoaded", () => {
     loadStatusAndEvents();
+<<<<<<< HEAD
+
+    const refreshBtn = document.getElementById("refreshEvents");
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => loadStatusAndEvents());
+    }
+=======
+>>>>>>> parent of 051251e (merge: sync safety branch with trunk)
 
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
         clearBtn.addEventListener("click", async () => {
+<<<<<<< HEAD
+=======
             if (!ADMIN_TOKEN) {
                 window.alert("Admin actions disabled in demo mode.");
                 return;
             }
 
+>>>>>>> parent of 051251e (merge: sync safety branch with trunk)
             const ok = window.confirm(
                 "Reset demo?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
             );
