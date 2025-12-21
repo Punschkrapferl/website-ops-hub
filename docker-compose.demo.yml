@@ -1,12 +1,15 @@
 services:
   api:
-    image: punschkrapferl23/website-ops-hub-api:v1.0.0
+    image: punschkrapferl23/website-ops-hub-api:1.0.1
+    build: ./api
     env_file:
       - .env
     environment:
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
       NODE_ENV: production
       DB_PATH: /data/app.db
+      # CORS not required when demo site proxies same-origin (/api),
+      # but keeping localhost:3000 is fine if you ever call API directly.
+      CORS_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - api_data:/data
     ports:
@@ -18,7 +21,10 @@ services:
       retries: 20
 
   site:
-    image: punschkrapferl23/website-ops-hub-site:v1.0.0
+    image: punschkrapferl23/website-ops-hub-site:1.0.1
+    build:
+      context: ./site
+      target: runtime
     depends_on:
       api:
         condition: service_healthy
