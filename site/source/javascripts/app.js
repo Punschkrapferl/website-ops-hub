@@ -12,18 +12,76 @@
 
 // Demo: nginx proxies /api (same-origin).
 // Dev: Middleman runs on :4567, so we call the API directly on :8080 (CORS required).
+// SECURITY: Do NOT embed ADMIN_TOKEN in HTML/meta. If needed in dev, prompt for it.
+
+const IS_DEV = window.location.port === "4567";
 
 const API_BASE = (() => {
-    const port = window.location.port;
-    return port === "4567" ? "http://localhost:8080" : "";
+    return IS_DEV ? "http://localhost:8080" : "";
 })();
 
 const EVENTS_LIST_URL = `${API_BASE}/api/events?limit=8`;
 const RESET_URL = `${API_BASE}/api/admin/reset`;
 const HEALTH_URL = `${API_BASE}/health`;
 
-const ADMIN_TOKEN =
-    document.querySelector('meta[name="admin-token"]')?.getAttribute("content") ?? "";
+const ADMIN_TOKEN_STORAGE_KEY = "opsHubAdminToken";
+
+function getStoredAdminToken() {
+    try {
+        return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+    } catch {
+        return "";
+    }
+}
+
+function setStoredAdminToken(token) {
+    try {
+        window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+    } catch {
+        // ignore
+    }
+}
+
+/**
+ * If you're in dev (:4567), you can paste the token once per session.
+ * In demo (nginx), admin actions stay disabled.
+ */
+function getAdminTokenOrPrompt() {
+    if (!IS_DEV) return "";
+
+    const existing = getStoredAdminToken();
+    if (existing) return existing;
+
+    const token = window.prompt(
+        "Admin reset is DEV-only.\n\nPaste ADMIN_TOKEN to enable reset for this session:",
+        ""
+    );
+
+    const cleaned = (token || "").trim();
+    if (cleaned) setStoredAdminToken(cleaned);
+    return cleaned;
+}
+
+function extractApiErrorMessage(data) {
+    if (!data) return "";
+    if (typeof data === "string") return data;
+
+    // Common API error shapes (Express/FastAPI/etc.)
+    if (typeof data.error === "string") return data.error;
+    if (typeof data.message === "string") return data.message;
+    if (typeof data.detail === "string") return data.detail;
+
+    // FastAPI often uses detail as list/dict
+    if (data.detail != null) {
+        try {
+            return JSON.stringify(data.detail);
+        } catch {
+            return String(data.detail);
+        }
+    }
+
+    return "";
+}
 
 async function fetchJson(url) {
     const res = await fetch(url, {
@@ -31,7 +89,19 @@ async function fetchJson(url) {
         cache: "no-store",
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Try to surface server-provided message even on non-2xx
+    let data = null;
+    try {
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) data = await res.json();
+    } catch {
+        // ignore
+    }
+
+    if (!res.ok) {
+        const msg = extractApiErrorMessage(data) || `HTTP ${res.status}`;
+        throw new Error(msg);
+    }
 
     // If server ever returns non-JSON, treat it as failure.
     const ct = res.headers.get("content-type") ?? "";
@@ -39,6 +109,8 @@ async function fetchJson(url) {
         throw new Error(`Expected JSON but got: ${ct || "unknown content-type"}`);
     }
 
+    // If we already parsed it above, reuse it
+    if (data != null) return data;
     return res.json();
 }
 
@@ -54,15 +126,26 @@ async function postJson(url, opts = {}) {
         cache: "no-store",
     });
 
-    // No redundant init; parse if possible, otherwise null.
     let data = null;
     try {
-        data = await res.json();
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) data = await res.json();
     } catch {
-
+        // ignore non-JSON bodies
     }
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+        // Prefer server message; otherwise show a friendly 401 for demo/admin endpoints
+        const serverMsg = extractApiErrorMessage(data);
+
+        if (res.status === 401) {
+            // This is the message you expected to see instead of "HTTP 401"
+            throw new Error(serverMsg || "Public demo: admin token required");
+        }
+
+        throw new Error(serverMsg || `HTTP ${res.status}`);
+    }
+
     return data;
 }
 
@@ -92,7 +175,6 @@ function maskEmail(email) {
     const domain = email.slice(at + 1);
     if (!domain) return email;
 
-    // No redundant init + overwrite; compute directly.
     const maskedLocal =
         local.length <= 2
             ? local[0] + "*".repeat(Math.max(1, local.length - 1))
@@ -162,23 +244,21 @@ async function loadStatusAndEvents() {
     }
 }
 
-async function resetDemo() {
-    if (!ADMIN_TOKEN) {
-        throw new Error(
-            "Reset disabled: ADMIN_TOKEN not embedded in the site. Set ADMIN_TOKEN for the site build/runtime."
-        );
+async function resetDemo(token) {
+    if (!token) {
+        // Keep wording consistent with what you want to show
+        throw new Error("Public demo: admin token required");
     }
 
     const data = await postJson(RESET_URL, {
-        headers: { "X-Admin-Token": ADMIN_TOKEN },
+        headers: { "X-Admin-Token": token },
     });
 
     if (!data || data.ok !== true) {
-        throw new Error(
-            `Could not reset demo: ${data ? String(data) : "no response body"}`
-        );
+        throw new Error(`Could not reset demo: ${data ? String(data) : "no response body"}`);
     }
-        return data;
+
+    return data;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -191,26 +271,51 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     })();
 
+    const refreshBtn = document.getElementById("refreshEvents");
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", async () => {
+            refreshBtn.disabled = true;
+            try {
+                await loadStatusAndEvents();
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        });
+    }
+
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
+        // Public demo: hide or disable admin action completely.
+        if (!IS_DEV) {
+            clearBtn.disabled = true;
+            clearBtn.title = "Admin actions disabled in public demo.";
+        }
+
         clearBtn.addEventListener("click", async () => {
-            if (!ADMIN_TOKEN) {
-                window.alert("Public Demo: Admin actions disabled in demo mode.");
+            if (!IS_DEV) {
+                // If it ever gets clicked anyway, show the exact message you expect
+                window.alert("Public demo: admin token required");
+                return;
+            }
+
+            const token = getAdminTokenOrPrompt();
+            if (!token) {
+                window.alert("Public demo: admin token required");
                 return;
             }
 
             const ok = window.confirm(
-                "Reset demo?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
+                "Reset dev instance?\n\nThis will delete stored leads/events in the local SQLite DB for THIS instance."
             );
             if (!ok) return;
 
             clearBtn.disabled = true;
             try {
-                await resetDemo();
+                await resetDemo(token);
                 await loadStatusAndEvents();
             } catch (e) {
                 window.alert(
-                    `Reset failed: ${e?.message || String(e)}\n\nCheck RESET_URL + X-Admin-Token.`
+                    `Reset failed: ${e?.message || String(e)}\n\nCheck RESET_URL and API token validation.`
                 );
             } finally {
                 clearBtn.disabled = false;
