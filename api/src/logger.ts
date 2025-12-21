@@ -12,6 +12,7 @@ const stream = isDev
     })
     : undefined;
 
+// Structured logging (pretty in dev, JSON in prod)
 export const logger = pino(
     {
         level: process.env.LOG_LEVEL || "info",
