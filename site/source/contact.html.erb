@@ -43,21 +43,28 @@ title: Contact
 
       <div id="alert" class="alert d-none" role="alert"></div>
 
-      <form id="leadForm" class="d-grid gap-3">
+      <form id="leadForm" class="d-grid gap-3" novalidate>
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label muted">Name</label>
-            <input class="form-control" name="name" placeholder="Optional" />
+            <input class="form-control" name="name" placeholder="Optional" autocomplete="name" />
           </div>
           <div class="col-md-6">
             <label class="form-label muted">Email *</label>
-            <input class="form-control" name="email" placeholder="Required" required />
+            <input
+              class="form-control"
+              type="email"
+              name="email"
+              placeholder="Required"
+              autocomplete="email"
+              required
+            />
           </div>
         </div>
 
         <div>
           <label class="form-label muted">Company</label>
-          <input class="form-control" name="company" placeholder="Optional" />
+          <input class="form-control" name="company" placeholder="Optional" autocomplete="organization" />
         </div>
 
         <div>
@@ -78,39 +85,75 @@ title: Contact
 </div>
 
 <script>
-  const form = document.getElementById("leadForm");
-  const alertBox = document.getElementById("alert");
+  (() => {
+    const isDevPage = window.location.port === "4567";
+    const apiBasePage = isDevPage ? "http://localhost:8080" : "";
+    const leadUrl = `${apiBasePage}/api/lead`;
 
-  function showAlert(type, msg) {
-    alertBox.className = `alert alert-${type}`;
-    alertBox.textContent = msg;
-    alertBox.classList.remove("d-none");
-  }
+    const form = document.getElementById("leadForm");
+    const alertBox = document.getElementById("alert");
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    alertBox.classList.add("d-none");
-
-    const fd = new FormData(form);
-    const payload = Object.fromEntries(fd.entries());
-
-    try {
-      const res = await fetch("/api/lead", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": (payload.email || "") + "::" + (payload.message || "")
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Request failed");
-
-      showAlert("success", data.duplicate ? "Already received. Thank you." : "Sent. Thank you.");
-      form.reset();
-    } catch (err) {
-      showAlert("danger", err.message || "Something went wrong");
+    function showAlert(type, msg) {
+      alertBox.className = `alert alert-${type}`;
+      alertBox.textContent = msg;
+      alertBox.classList.remove("d-none");
     }
-  });
+
+    async function sha256Hex(text) {
+      if (!window.crypto?.subtle) return null;
+      const enc = new TextEncoder().encode(text);
+      const buf = await window.crypto.subtle.digest("SHA-256", enc);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      alertBox.classList.add("d-none");
+
+      const fd = new FormData(form);
+      const payload = Object.fromEntries(fd.entries());
+
+      // Trim and drop empty optional fields so backend sees "missing" instead of "".
+      for (const k of Object.keys(payload)) {
+        const v = String(payload[k] ?? "").trim();
+        if (v === "") delete payload[k];
+        else payload[k] = v;
+      }
+
+      if (!payload.email) {
+        showAlert("danger", "Email is required.");
+        return;
+      }
+
+      const email = String(payload.email);
+      const msg = String(payload.message ?? "");
+      const idemBase = `${email}::${msg}`;
+
+      const idemHash = await sha256Hex(idemBase);
+      const idempotencyKey = idemHash
+        ? `lead_${idemHash}`
+        : `lead_${idemBase.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120)}`;
+
+      try {
+        const res = await fetch(leadUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const ct = res.headers.get("content-type") || "";
+        const data = ct.includes("application/json") ? await res.json() : null;
+
+        if (!res.ok) throw new Error(data?.error || `Request failed (HTTP ${res.status})`);
+
+        showAlert("success", data?.duplicate ? "Already received. Thank you." : "Sent. Thank you.");
+        form.reset();
+      } catch (err) {
+        showAlert("danger", err?.message || "Something went wrong");
+      }
+    });
+  })();
 </script>
