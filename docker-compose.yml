@@ -21,6 +21,8 @@ services:
   site:
     build:
       context: ./site
+      # runtime is already the last stage, but keep explicit if you want:
+      # target: runtime
       args:
         ADMIN_TOKEN: ${ADMIN_TOKEN}
     depends_on:
@@ -32,9 +34,13 @@ services:
   site-dev:
     build:
       context: ./site
-      args:
-        ADMIN_TOKEN: ${ADMIN_TOKEN}
+      target: deps
     profiles: [ "dev" ]
+    env_file:
+      - .env
+    environment:
+      # ensures Middleman can render the meta tag in layout
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
     working_dir: /app
     command: bundle _2.7.2_ exec middleman server --watcher-force-polling --bind-address 0.0.0.0 --port 4567
     volumes:
