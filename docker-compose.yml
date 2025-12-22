@@ -34,7 +34,7 @@ services:
   site-dev:
     build:
       context: ./site
-      target: deps
+      target: dev
     profiles: [ "dev" ]
     env_file:
       - .env
