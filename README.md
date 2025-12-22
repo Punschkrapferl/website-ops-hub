@@ -33,9 +33,65 @@ No local builds required.
 ```bash
 git clone https://github.com/Punschkrapferl/website-ops-hub.git
 cd website-ops-hub
-docker-compose -f docker-compose.demo.yml pull
-docker-compose -f docker-compose.demo.yml up
+cp .env.example .env
 ```
+
+Edit ```.env``` (minimum recommended):
+```dotenv
+ADMIN_TOKEN=changeme
+CORS_ORIGIN=http://localhost:4567
+DB_PATH=/data/app.db
+```
+
+Notes:
+- `ADMIN_TOKEN` is required for admin/destructive endpoints (reset, clear events).
+- `CORS_ORIGIN` is only needed for dev mode (Middleman on `:4567` calling API on `:8080`).
+- `DB_PATH` defaults to `/data/app.db` in the API container.
+
+---
+
+# Run modes
+## Demo mode (nginx, same-origin, no CORS)
+- Static site served by nginx
+- API requests proxied through nginx under `/api/*`
+- Browser uses same-origin calls (no CORS required)
+
+Ports:
+- Site: `http://localhost:3000`
+- API health (direct): `http://localhost:8080/health`
+
+Run:
+```bash
+docker compose -f docker-compose.demo.yml up --build
+```
+
+Stop:
+```bash
+docker compose -f docker-compose.demo.yml down
+```
+
+---
+
+## Dev mode (Middleman hot reload)
+- Middleman dev server with hot reload
+- Browser calls API directly
+- API must allow CORS (`CORS_ORIGIN`)
+
+Ports:
+- Site: `http://localhost:4567`
+- API health (direct): `http://localhost:8080`
+
+Run:
+```bash
+docker compose --profile dev up --build
+```
+
+Stop:
+``` 
+docker compose --profile dev down
+```
+---
+
 ## Architecture (high level)
 ```
 ┌──────────────────────────────┐
@@ -83,7 +139,9 @@ docker-compose -f docker-compose.demo.yml up
 └──────────────────────────────┘
 
 ```
+
 ---
+
 ## Lead submission (Contact form)
 
 The contact form is the entry point into the pipeline.  
@@ -102,72 +160,16 @@ For each lead submission, the API emits a sequence of events:
 ![Event feed showing a full lead pipeline](docs/screenshots/Event.png)
 
 ---
-## What is intentionally simplified
 
-- Integrations (`crm_upsert`, `notify`) are mocked
-- Authentication is a shared admin token (demo-only)
-- No background workers or message queues
-- SQLite instead of a managed database
-
-These choices keep the data flow inspectable and the demo self-contained.
-
----
-
-## Run modes
-### Demo mode (default)
-- Static site served by **nginx**
-- API requests proxied through nginx
-- Same-origin requests (no CORS required)
-  Ports:
-- Site: `http://localhost:3000`
-- API (internal): `http://api:8080`
-- API health (direct): `http://localhost:8080/health`
-  Run:
-```bash
-docker-compose -f docker-compose.demo.yml up --build
-```
----
-### Dev mode (Middleman hot reload)
-- Middleman dev server with hot reload
-- Browser calls API directly
-- API must allow CORS
-  Ports:
-- Site (dev): `http://localhost:4567`
-- API: `http://localhost:8080`
-  Run:
-```bash
-docker compose --profile dev up --build
-```
----
-## Configuration
-Copy the example environment file:
-```bash
-cp .env.example .env
-```
-### Environment variables
-```env
-ADMIN_TOKEN=changeme
-CORS_ORIGIN=http://localhost:4567
-DB_PATH=/data/app.db
-```
-- `ADMIN_TOKEN`
-  Shared secret for admin-only endpoints.
-  Required for destructive operations.
-- `CORS_ORIGIN`
-  Comma-separated list of allowed origins.
-  Required only in dev mode.
-- `DB_PATH`
-  Path to the SQLite database file inside the container.
----
 ## API endpoints
 ### Health
 ```http
 GET /health
 ```
-
 Returns `200 OK` if the API is running.
 
 ---
+
 ### Lead ingestion
 ```http
 POST /api/lead
@@ -177,40 +179,47 @@ POST /api/lead
 - Emits events
 - Triggers mock integrations
 - Supports idempotency via `Idempotency-Key` header
+
 ---
+
 ### Events feed
 ```http
 GET /api/events
-```
-Returns recent events for inspection.
-```http
 DELETE /api/events
 ```
-Clears the event log.
-Requires:
+Admin header required for destructive actions:
 ```http
 X-Admin-Token: <ADMIN_TOKEN>
 ```
+Example:
+```bash 
+curl -X DELETE http://localhost:8080/api/events \
+  -H "X-Admin-Token: changeme"
+```
+
 ---
+
 ### Admin reset
 ```http
 POST /api/admin/reset
 ```
-Resets all demo data.
 Optional query:
 ```http
 ?vacuum=1
 ```
-
-Requires admin token.
+Example:
+```bash
+curl -X POST "http://localhost:8080/api/admin/reset?vacuum=1" \
+  -H "X-Admin-Token: changeme"
+```
 
 ---
+
 ## Admin authentication
 Admin endpoints require a shared secret:
 ```http
 X-Admin-Token: <ADMIN_TOKEN>
 ```
-
 If `ADMIN_TOKEN` is not configured, the API fails fast on startup.
 
 ---
@@ -227,38 +236,47 @@ This setup is intentionally minimal and not intended for public deployment.
 ---
 
 ## Persistence
-- SQLite database stored on a Docker volume
+- SQLite database stored on a Docker volume under `/data`
 - WAL mode enabled for better concurrency
 - Data survives container restarts
+
 ---
+
 ## Observability
 Every significant step emits an event.
 The UI displays the event feed as a trace so you can see:
 - what succeeded
 - what failed
 - where the pipeline stopped
+
 ---
+
 ## Project structure (top level only)
 ```
 website-ops-hub/
-├── api/ # Express API + SQLite
-├── site/ # Middleman static site
+├── api/                # Express API + SQLite
+├── site/               # Middleman static site
 ├── docker-compose.yml
 ├── docker-compose.demo.yml
 ├── .env.example
 └── README.md
 ```
 
+---
+
 ## Troubleshooting
 - **CORS errors in dev mode**
-  Ensure `CORS_ORIGIN` includes `http://localhost:4567`
-- **404 on `/api/*`**
-  Check nginx proxy configuration and trailing slashes
-- **API not starting**
-  Ensure `ADMIN_TOKEN` is set
+  - Ensure `CORS_ORIGIN` includes `http://localhost:4567`
+  - Restart: ```docker compose --profile dev up --build``` 
+- **404 on `/api/*` in demo mode**
+  - Check nginx proxy config and trailing slashes in `site/nginx.conf`
+  - Restart: ```docker compose -f docker-compose.demo.yml up --build```
+- **API not starting / DB errors**
+  - Ensure `/data` volume is writable (entrypoint fixes perms)
+  - Ensure `DB_PATH=/data/app.db` (or leave default)
+  - Ensure `ADMIN_TOKEN` is set
 
-Note: Images are published with a placeholder admin token.
-  A real ADMIN_TOKEN must be provided at runtime via .env.
 ---
+
 ## License
 MIT
