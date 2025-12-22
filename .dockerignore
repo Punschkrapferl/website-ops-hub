@@ -1,0 +1,46 @@
+# VCS
+.git
+.gitignore
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*.swo
+
+# Node
+**/node_modules
+**/npm-debug.log*
+**/yarn-error.log*
+**/.pnpm-store
+**/.cache
+
+# Builds
+**/dist
+**/build
+**/.next
+**/out
+**/.parcel-cache
+**/.turbo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Docker / compose local data
+docker-compose.override.yml
+
+# Local DB / runtime data
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/data
+**/tmp
+**/logs
+
+# Tests / coverage
+**/coverage
+**/.nyc_output

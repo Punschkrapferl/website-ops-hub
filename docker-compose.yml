@@ -4,9 +4,10 @@ services:
     env_file:
       - .env
     environment:
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
       NODE_ENV: development
       DB_PATH: /data/app.db
-      CORS_ORIGIN: http://localhost:4567,http://127.0.0.1:4567
+      CORS_ORIGIN: http://localhost:4567
     volumes:
       - api_data:/data
     ports:
@@ -17,10 +18,31 @@ services:
       timeout: 2s
       retries: 20
 
+  site:
+    build:
+      context: ./site
+      # runtime is already the last stage, but keep explicit if you want:
+      # target: runtime
+      args:
+        ADMIN_TOKEN: ${ADMIN_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
   site-dev:
     build:
       context: ./site
       target: dev
+    profiles: [ "dev" ]
+    env_file:
+      - .env
+    environment:
+      # ensures Middleman can render the meta tag in layout
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+    working_dir: /app
+    command: bundle _2.7.2_ exec middleman server --watcher-force-polling --bind-address 0.0.0.0 --port 4567
     volumes:
       - ./site:/app
     ports:

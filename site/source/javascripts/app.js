@@ -12,7 +12,8 @@
 
 // Demo: nginx proxies /api (same-origin).
 // Dev: Middleman runs on :4567, so we call the API directly on :8080 (CORS required).
-// SECURITY: Do NOT embed ADMIN_TOKEN in HTML/meta. If needed in dev, prompt for it.
+// SECURITY: Do NOT embed ADMIN_TOKEN in HTML/meta for public deployments.
+// In this project, we only *use* the meta token in dev (:4567).
 
 const IS_DEV = window.location.port === "4567";
 
@@ -42,16 +43,45 @@ function setStoredAdminToken(token) {
     }
 }
 
+function clearStoredAdminToken() {
+    try {
+        window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    } catch {
+        // ignore
+    }
+}
+
+function getMetaAdminToken() {
+    try {
+        const el = document.querySelector('meta[name="admin-token"]');
+        const v = (el && el.getAttribute("content")) || "";
+        return String(v).trim();
+    } catch {
+        return "";
+    }
+}
+
 /**
- * If you're in dev (:4567), you can paste the token once per session.
- * In demo (nginx), admin actions stay disabled.
+ * If you're in dev (:4567), prefer the token injected into the HTML (meta tag).
+ * That avoids prompts and avoids stale sessionStorage tokens after changing .env.
+ * Fallback to sessionStorage, then prompt.
  */
 function getAdminTokenOrPrompt() {
     if (!IS_DEV) return "";
 
+    // 1) Prefer meta token in dev (freshest)
+    const metaToken = getMetaAdminToken();
+    if (metaToken) {
+        const stored = getStoredAdminToken();
+        if (stored !== metaToken) setStoredAdminToken(metaToken);
+        return metaToken;
+    }
+
+    // 2) Fallback: sessionStorage token
     const existing = getStoredAdminToken();
     if (existing) return existing;
 
+    // 3) Last resort: prompt
     const token = window.prompt(
         "Admin reset is DEV-only.\n\nPaste ADMIN_TOKEN to enable reset for this session:",
         ""
@@ -83,6 +113,13 @@ function extractApiErrorMessage(data) {
     return "";
 }
 
+function makeHttpError(status, message) {
+    const err = new Error(message);
+    // attach status for callers
+    err.status = status;
+    return err;
+}
+
 async function fetchJson(url) {
     const res = await fetch(url, {
         headers: { Accept: "application/json" },
@@ -100,13 +137,13 @@ async function fetchJson(url) {
 
     if (!res.ok) {
         const msg = extractApiErrorMessage(data) || `HTTP ${res.status}`;
-        throw new Error(msg);
+        throw makeHttpError(res.status, msg);
     }
 
     // If server ever returns non-JSON, treat it as failure.
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("application/json")) {
-        throw new Error(`Expected JSON but got: ${ct || "unknown content-type"}`);
+        throw makeHttpError(0, `Expected JSON but got: ${ct || "unknown content-type"}`);
     }
 
     // If we already parsed it above, reuse it
@@ -135,15 +172,17 @@ async function postJson(url, opts = {}) {
     }
 
     if (!res.ok) {
-        // Prefer server message; otherwise show a friendly 401 for demo/admin endpoints
         const serverMsg = extractApiErrorMessage(data);
 
         if (res.status === 401) {
-            // This is the message you expected to see instead of "HTTP 401"
-            throw new Error(serverMsg || "Public demo: admin token required");
+            // In dev, 401 is almost always a stale/wrong token.
+            const msg =
+                serverMsg ||
+                (IS_DEV ? "Invalid admin token (check ADMIN_TOKEN)" : "Public demo: admin token required");
+            throw makeHttpError(401, msg);
         }
 
-        throw new Error(serverMsg || `HTTP ${res.status}`);
+        throw makeHttpError(res.status, serverMsg || `HTTP ${res.status}`);
     }
 
     return data;
@@ -206,16 +245,24 @@ function renderEvents(listEl, events) {
 
         const row = document.createElement("div");
         row.className = "event-row";
+
+        // 3-column layout:
+        // [badges] [time] [message]
         row.innerHTML = `
-      <div>
-        <div class="d-flex align-items-center gap-2">
-          <span class="badge badge-soft">${type}</span>
-          <span class="badge badge-soft">${status}</span>
-        </div>
-        ${detail ? `<div class="muted small mt-1">${detail}</div>` : ""}
-      </div>
-      <div class="muted small text-end">${t}</div>
-    `;
+          <div class="event-left">
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge badge-soft">${type}</span>
+              <span class="badge badge-soft">${status}</span>
+            </div>
+          </div>
+
+          <div class="event-time muted small">${t}</div>
+
+          <div class="event-msg">
+            ${detail ? `<div class="muted small">${detail}</div>` : ""}
+          </div>
+        `;
+
         listEl.appendChild(row);
     }
 }
@@ -245,20 +292,35 @@ async function loadStatusAndEvents() {
 }
 
 async function resetDemo(token) {
-    if (!token) {
-        // Keep wording consistent with what you want to show
-        throw new Error("Public demo: admin token required");
-    }
-
-    const data = await postJson(RESET_URL, {
-        headers: { "X-Admin-Token": token },
-    });
+    const headers = token ? { "X-Admin-Token": token } : {};
+    const data = await postJson(RESET_URL, { headers });
 
     if (!data || data.ok !== true) {
         throw new Error(`Could not reset demo: ${data ? String(data) : "no response body"}`);
     }
 
     return data;
+}
+
+// Retry once in dev if we get a 401 (usually stale sessionStorage token)
+async function resetDemoWithDevRetry() {
+    const token1 = getAdminTokenOrPrompt();
+    if (!token1) throw new Error("Invalid admin token (check ADMIN_TOKEN)");
+
+    try {
+        return await resetDemo(token1);
+    } catch (e) {
+        if (IS_DEV && e && e.status === 401) {
+            clearStoredAdminToken();
+
+            // After clearing, we’ll re-prefer the meta token (fresh) and only prompt if needed.
+            const token2 = getAdminTokenOrPrompt();
+            if (token2 && token2 !== token1) {
+                return await resetDemo(token2);
+            }
+        }
+        throw e;
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -285,22 +347,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const clearBtn = document.getElementById("clearEvents");
     if (clearBtn) {
-        // Public demo: hide or disable admin action completely.
+        // Public demo: keep it clickable, but don't perform admin action.
         if (!IS_DEV) {
-            clearBtn.disabled = true;
+            clearBtn.disabled = false; // IMPORTANT: do not disable
             clearBtn.title = "Admin actions disabled in public demo.";
         }
 
         clearBtn.addEventListener("click", async () => {
             if (!IS_DEV) {
-                // If it ever gets clicked anyway, show the exact message you expect
-                window.alert("Public demo: admin token required");
-                return;
-            }
-
-            const token = getAdminTokenOrPrompt();
-            if (!token) {
-                window.alert("Public demo: admin token required");
+                window.alert("Public demo: admin actions are disabled.");
                 return;
             }
 
@@ -311,12 +366,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             clearBtn.disabled = true;
             try {
-                await resetDemo(token);
+                await resetDemoWithDevRetry();
                 await loadStatusAndEvents();
             } catch (e) {
-                window.alert(
-                    `Reset failed: ${e?.message || String(e)}\n\nCheck RESET_URL and API token validation.`
-                );
+                window.alert(`Reset failed: ${e?.message || String(e)}`);
             } finally {
                 clearBtn.disabled = false;
             }
