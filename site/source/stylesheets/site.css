@@ -207,12 +207,51 @@
 /* Events */
 .event-row {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 12px;
+    grid-template-areas: "badges time msg";
+    grid-template-columns: max-content 220px 1fr;
+    column-gap: 18px;      /* <-- this is the main “push text right” control */
+    row-gap: 6px;
+    align-items: center;
+
     padding: 10px 12px;
     border-radius: 14px;
     border: 1px solid var(--border);
     background: rgba(255, 255, 255, .03);
+}
+
+.event-left {
+    grid-area: badges;
+}
+
+.event-time {
+    grid-area: time;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.event-msg {
+    grid-area: msg;
+    padding-left: 6px;     /* tiny extra nudge */
+}
+
+@media (max-width: 768px) {
+    .event-row {
+        grid-template-areas:
+            "badges time"
+            "msg msg";
+        grid-template-columns: 1fr auto;
+        column-gap: 12px;
+        row-gap: 8px;
+        align-items: start;
+    }
+
+    .event-time {
+        text-align: right;
+    }
+
+    .event-msg {
+        padding-left: 0;
+    }
 }
 
 .event-row+.event-row {
